@@ -491,6 +491,15 @@ export class AgyCliSession {
       while (true) {
         if (this.#cancelled) break;
         const updates = poller.poll();
+        if (poller.conversationId && poller.conversationId !== this.#conversationId) {
+          this.#conversationId = poller.conversationId;
+          this.#lastStepIdx = -1;
+          this.#lastGenMetadataIdx = -1;
+          seenRevision = -1;
+          candidateRevision = -1;
+          lastActivityTime = Date.now();
+          deadline = Date.now() + timeoutMs;
+        }
         if (poller.revision !== seenRevision) {
           seenRevision = poller.revision;
           candidateRevision = poller.turnCompleteCandidate ? poller.revision : -1;
@@ -710,9 +719,15 @@ export class AgyCliSession {
       await this.stopPty();
       throw error;
     } finally {
-      this.#conversationId = poller.conversationId ?? this.#conversationId;
-      this.#lastStepIdx = Math.max(this.#lastStepIdx, poller.lastStepIdx);
-      this.#lastGenMetadataIdx = Math.max(this.#lastGenMetadataIdx, poller.lastGenMetadataIdx);
+      if (poller.conversationId && poller.conversationId !== this.#conversationId) {
+        this.#conversationId = poller.conversationId;
+        this.#lastStepIdx = poller.lastStepIdx;
+        this.#lastGenMetadataIdx = poller.lastGenMetadataIdx;
+      } else {
+        this.#conversationId = poller.conversationId ?? this.#conversationId;
+        this.#lastStepIdx = Math.max(this.#lastStepIdx, poller.lastStepIdx);
+        this.#lastGenMetadataIdx = Math.max(this.#lastGenMetadataIdx, poller.lastGenMetadataIdx);
+      }
       this.#lastPromptUserStepIdxs = poller.userStepIdxs;
       poller.close();
       if (this.#activeStreamPoller === poller) this.#activeStreamPoller = undefined;
@@ -978,9 +993,15 @@ export class AgyCliSession {
       const usage = poller.accumulatedTurnUsage();
       return { stopReason, usage };
     } finally {
-      this.#conversationId = poller.conversationId ?? this.#conversationId;
-      this.#lastStepIdx = Math.max(this.#lastStepIdx, poller.lastStepIdx);
-      this.#lastGenMetadataIdx = Math.max(this.#lastGenMetadataIdx, poller.lastGenMetadataIdx);
+      if (poller.conversationId && poller.conversationId !== this.#conversationId) {
+        this.#conversationId = poller.conversationId;
+        this.#lastStepIdx = poller.lastStepIdx;
+        this.#lastGenMetadataIdx = poller.lastGenMetadataIdx;
+      } else {
+        this.#conversationId = poller.conversationId ?? this.#conversationId;
+        this.#lastStepIdx = Math.max(this.#lastStepIdx, poller.lastStepIdx);
+        this.#lastGenMetadataIdx = Math.max(this.#lastGenMetadataIdx, poller.lastGenMetadataIdx);
+      }
       this.#lastPromptUserStepIdxs = poller.userStepIdxs;
       poller.close();
       if (this.#process === child) {

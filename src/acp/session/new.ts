@@ -39,7 +39,12 @@ export async function handleNewSessionV1(
   params: V1NewSessionRequest,
   client: V1AgentContext | undefined,
   deps: NewSessionDeps & {
-    notifyAvailableCommandsV1(client: V1AgentContext, sessionId: string): Promise<void>;
+    notifyAvailableCommandsV1(
+      client: V1AgentContext,
+      sessionId: string,
+      cwd?: string,
+      additionalDirectories?: string[]
+    ): Promise<void>;
   }
 ): Promise<V1NewSessionResponse> {
   await deps.requireAuthenticated(params.cwd);
@@ -50,7 +55,9 @@ export async function handleNewSessionV1(
     // response and register it then; a notification sent earlier targets a
     // session the client doesn't recognize yet and gets silently dropped.
     // Defer past the response so it's on the wire second, not first.
-    deferAfterResponse(() => deps.notifyAvailableCommandsV1(client, session.sessionId));
+    deferAfterResponse(() =>
+      deps.notifyAvailableCommandsV1(client, session.sessionId, session.cwd, session.additionalDirectories)
+    );
   }
   return {
     sessionId: session.sessionId,
@@ -63,7 +70,12 @@ export async function handleNewSessionV2(
   params: V2NewSessionRequest,
   client: V2AgentContext | undefined,
   deps: NewSessionDeps & {
-    notifyAvailableCommandsV2(client: V2AgentContext, sessionId: string): Promise<void>;
+    notifyAvailableCommandsV2(
+      client: V2AgentContext,
+      sessionId: string,
+      cwd?: string,
+      additionalDirectories?: string[]
+    ): Promise<void>;
   }
 ): Promise<V2NewSessionResponse> {
   await deps.requireAuthenticated(params.cwd);
@@ -73,7 +85,9 @@ export async function handleNewSessionV2(
     session.v2Client = client;
     // See handleNewSessionV1: must not resolve before the response is sent, or
     // the client drops it as a notification for an unknown session.
-    deferAfterResponse(() => deps.notifyAvailableCommandsV2(client, session.sessionId));
+    deferAfterResponse(() =>
+      deps.notifyAvailableCommandsV2(client, session.sessionId, session.cwd, session.additionalDirectories)
+    );
   }
   return {
     sessionId: session.sessionId,

@@ -84,6 +84,7 @@ export interface UserPrompt {
 export interface AgentText {
   text: string;
   thought?: string;
+  hasToolCalls?: boolean;
 }
 
 export interface TitleUpdate {
@@ -283,9 +284,13 @@ function decodeUserPrompt(bytes: Uint8Array): UserPrompt {
 }
 
 function decodeAgentText(bytes: Uint8Array): AgentText {
-  return readMessage<AgentText>(bytes, { text: "" }, {
+  return readMessage<AgentText>(bytes, { text: "", hasToolCalls: false }, {
     1: (m, r) => (m.text = r.string()),
-    3: (m, r) => (m.thought = r.string())
+    3: (m, r) => (m.thought = r.string()),
+    7: (m, r) => {
+      m.hasToolCalls = true;
+      r.skip(2);
+    }
   });
 }
 

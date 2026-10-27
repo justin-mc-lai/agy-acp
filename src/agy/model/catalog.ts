@@ -8,6 +8,8 @@ export const NO_REASONING_VALUE = "none";
 
 export function defaultReasoningEffortForBase(selectedBaseModel: string, catalog: ModelCatalog): string {
   const effects = catalog.effortsFor(selectedBaseModel);
+  if (effects.includes("low")) return "low";
+  if (effects.includes("medium")) return "medium";
   return effects[0] ?? NO_REASONING_VALUE;
 }
 /** Legacy `agy models` lines: `Gemini 3.5 Flash (Medium)`. */

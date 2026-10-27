@@ -1,9 +1,14 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   AVAILABLE_COMMANDS,
   availableCommandsUpdate,
+  discoverSkills,
   interpretSlashCommand,
   isClientTextSlashPrompt,
+  kiroAvailableCommands,
   parseSlashCommand,
   resolveModelValue
 } from "../src/acp/slash-commands/index.js";
@@ -91,7 +96,7 @@ describe("interpretSlashCommand", () => {
     expect(interpretSlashCommand({ name: "mode", input: "turbo" }).kind).toBe("error");
     expect(interpretSlashCommand({ name: "plan", input: "extra" }).kind).toBe("error");
     expect(interpretSlashCommand({ name: "help", input: "" })).toEqual({ kind: "pass" });
-    expect(interpretSlashCommand({ name: "skills", input: "" })).toEqual({ kind: "pass" });
+    expect(interpretSlashCommand({ name: "skills", input: "" })).toEqual({ kind: "skills" });
   });
 });
 
@@ -121,5 +126,37 @@ describe("availableCommandsUpdate", () => {
     expect(AVAILABLE_COMMANDS.map((c) => c.name).sort()).toEqual(
       ["effort", "mode", "model", "plan", "skills"].sort()
     );
+  });
+});
+
+describe("discoverSkills and kiroAvailableCommands", () => {
+  it("discovers skills from workspace and formats for Kiro/Paseo", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "agy-skills-test-"));
+    try {
+      const skillDir = path.join(tmpDir, ".agents", "skills", "test-skill");
+      fs.mkdirSync(skillDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(skillDir, "SKILL.md"),
+        `---\nname: test-skill\ndescription: Test description\n---\n# Test Skill`
+      );
+
+      const skills = discoverSkills(tmpDir);
+      const found = skills.find((s) => s.name === "test-skill");
+      expect(found).toBeDefined();
+      expect(found?.description).toBe("Test description");
+
+      const kiro = kiroAvailableCommands(tmpDir);
+      expect(kiro.commands.some((c) => c.name === "/mode")).toBe(true);
+      expect(kiro.prompts.some((p) => p.name === "test-skill")).toBe(true);
+
+      const update = availableCommandsUpdate(tmpDir);
+      if (update.sessionUpdate === "available_commands_update") {
+        expect(update.availableCommands.some((c) => c.name === "test-skill")).toBe(true);
+      } else {
+        throw new Error("expected available_commands_update");
+      }
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });

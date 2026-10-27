@@ -29,7 +29,12 @@ export interface LoadSessionDeps {
     emit: (update: v1.SessionUpdate) => Promise<void>
   ): Promise<void>;
   clientToolCallNameV1?(client: V1AgentContext): ClientToolCallNameCapability | undefined;
-  notifyAvailableCommandsV1(client: V1AgentContext, sessionId: string): Promise<void>;
+  notifyAvailableCommandsV1(
+    client: V1AgentContext,
+    sessionId: string,
+    cwd?: string,
+    additionalDirectories?: string[]
+  ): Promise<void>;
 }
 
 export async function handleLoadSession(
@@ -56,7 +61,7 @@ export async function handleLoadSession(
     });
   }
 
-  await deps.notifyAvailableCommandsV1(client, params.sessionId);
+  await deps.notifyAvailableCommandsV1(client, params.sessionId, session.cwd, session.additionalDirectories);
 
   return {
     modes: sessionModeState(session.agy.config.mode),

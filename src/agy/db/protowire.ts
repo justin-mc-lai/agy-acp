@@ -15,7 +15,15 @@ export function readMessage<T>(bytes: Uint8Array, base: T, fields: FieldHandlers
     if (handler) {
       handler(base, reader);
     } else {
-      reader.skip(tag & 7);
+      const wireType = tag & 7;
+      if (wireType === 4 || wireType === 3) {
+        break;
+      }
+      try {
+        reader.skip(wireType);
+      } catch {
+        break;
+      }
     }
   }
   return base;

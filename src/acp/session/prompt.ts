@@ -29,6 +29,7 @@ import type { SessionModeId } from "../../agy/cli.js";
 import { contentBlocksToPrompt } from "../content/index.js";
 import type { ClientFileSystem } from "../../agy/edit/bridge.js";
 import {
+  discoverSkills,
   interpretSlashCommand,
   isClientTextSlashPrompt,
   parseSlashCommand,
@@ -150,6 +151,7 @@ export async function applyCuratedSlashCommand(
   notify: {
     modeChanged?: (mode: SessionModeId) => Promise<void>;
     configChanged: () => Promise<void>;
+    skillsRequested?: () => Promise<void>;
   },
   deps: PromptTurnDeps
 ): Promise<boolean> {
@@ -160,6 +162,12 @@ export async function applyCuratedSlashCommand(
   if (result.kind === "pass") return false;
   if (result.kind === "error") {
     throw new Error(result.message);
+  }
+  if (result.kind === "skills") {
+    if (notify.skillsRequested) {
+      await notify.skillsRequested();
+    }
+    return true;
   }
 
   const session = deps.requireSession(sessionId);
@@ -300,6 +308,20 @@ function v1Adapter(
             params.sessionId,
             deps.requireSession(params.sessionId)
           );
+        },
+        skillsRequested: async () => {
+          const s = deps.requireSession(params.sessionId);
+          const skills = discoverSkills(s.cwd, s.additionalDirectories);
+          const lines = skills.map((sk) => `- **\`/${sk.name}\`**: ${sk.description}`);
+          const text = `### 🛠️ Available Skills (${skills.length} discovered)\n\n${lines.join("\n")}`;
+          await client.notify(v1.methods.client.session.update, {
+            sessionId: params.sessionId,
+            update: {
+              sessionUpdate: "agent_message_chunk",
+              messageId: "skills-" + Date.now(),
+              content: { type: "text", text }
+            }
+          });
         }
       },
       deps
@@ -371,7 +393,18 @@ function v2Adapter(
           client,
           params.sessionId,
           deps.requireSession(params.sessionId)
-        )
+        ),
+        skillsRequested: async () => {
+          const s = deps.requireSession(params.sessionId);
+          const skills = discoverSkills(s.cwd, s.additionalDirectories);
+          const lines = skills.map((sk) => `- **\`/${sk.name}\`**: ${sk.description}`);
+          const text = `### 🛠️ Available Skills (${skills.length} discovered)\n\n${lines.join("\n")}`;
+          await notify({
+            sessionUpdate: "agent_message_chunk",
+            messageId: "skills-" + Date.now(),
+            content: { type: "text", text }
+          });
+        }
       },
       deps
     ),

@@ -44,14 +44,19 @@ export async function handleResumeSessionV1(
   params: V1ResumeSessionRequest,
   client: V1AgentContext | undefined,
   deps: ResumeSessionDeps & {
-    notifyAvailableCommandsV1(client: V1AgentContext, sessionId: string): Promise<void>;
+    notifyAvailableCommandsV1(
+      client: V1AgentContext,
+      sessionId: string,
+      cwd?: string,
+      additionalDirectories?: string[]
+    ): Promise<void>;
   }
 ): Promise<V1ResumeSessionResponse> {
   await deps.requireAuthenticated(params.cwd);
   const { session } = await deps.reloadSession(params.sessionId, params.cwd, params.additionalDirectories);
   if (client) {
     session.v1Client = client;
-    await deps.notifyAvailableCommandsV1(client, params.sessionId);
+    await deps.notifyAvailableCommandsV1(client, params.sessionId, session.cwd, session.additionalDirectories);
   }
   return {
     modes: sessionModeState(session.agy.config.mode),
@@ -68,7 +73,12 @@ export async function handleResumeSessionV2(
   client: V2AgentContext,
   deps: ResumeSessionDeps & {
     clientToolCallNameV2?(client: V2AgentContext): ClientToolCallNameCapability | undefined;
-    notifyAvailableCommandsV2(client: V2AgentContext, sessionId: string): Promise<void>;
+    notifyAvailableCommandsV2(
+      client: V2AgentContext,
+      sessionId: string,
+      cwd?: string,
+      additionalDirectories?: string[]
+    ): Promise<void>;
   }
 ): Promise<V2ResumeSessionResponse> {
   await deps.requireAuthenticated(params.cwd);
@@ -108,7 +118,7 @@ export async function handleResumeSessionV2(
     }
   }
 
-  await deps.notifyAvailableCommandsV2(client, params.sessionId);
+  await deps.notifyAvailableCommandsV2(client, params.sessionId, session.cwd, session.additionalDirectories);
 
   return { configOptions: sessionConfigOptionsV2(session) };
 }

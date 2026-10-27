@@ -10,7 +10,7 @@ import type { AgentContext as V1AgentContext } from "@agentclientprotocol/sdk";
 import * as v2 from "@agentclientprotocol/sdk/experimental/v2";
 import type { AgentContext as V2AgentContext } from "@agentclientprotocol/sdk/experimental/v2";
 import type { SessionModeId } from "../../agy/cli.js";
-import { availableCommandsUpdate } from "../slash-commands/index.js";
+import { availableCommandsUpdate, kiroAvailableCommands } from "../slash-commands/index.js";
 import { sessionConfigOptionsV1, sessionConfigOptionsV2 } from "./config-options.js";
 import type { SessionState } from "./types.js";
 import { sessionUpdateToV1, sessionUpdateToV2 } from "./update-wire.js";
@@ -57,16 +57,38 @@ export async function notifyConfigOptionUpdateV2(
   });
 }
 
-export async function notifyAvailableCommandsV1(client: V1AgentContext, sessionId: string): Promise<void> {
+export async function notifyAvailableCommandsV1(
+  client: V1AgentContext,
+  sessionId: string,
+  cwd?: string,
+  additionalDirectories?: string[]
+): Promise<void> {
   await client.notify(v1.methods.client.session.update, {
     sessionId,
-    update: sessionUpdateToV1(availableCommandsUpdate())
+    update: sessionUpdateToV1(availableCommandsUpdate(cwd, additionalDirectories))
   });
+  try {
+    await client.notify("_kiro.dev/commands/available", {
+      sessionId,
+      ...kiroAvailableCommands(cwd, additionalDirectories)
+    });
+  } catch {}
 }
 
-export async function notifyAvailableCommandsV2(client: V2AgentContext, sessionId: string): Promise<void> {
+export async function notifyAvailableCommandsV2(
+  client: V2AgentContext,
+  sessionId: string,
+  cwd?: string,
+  additionalDirectories?: string[]
+): Promise<void> {
   await client.notify(v2.methods.client.session.update, {
     sessionId,
-    update: sessionUpdateToV2(availableCommandsUpdate())
+    update: sessionUpdateToV2(availableCommandsUpdate(cwd, additionalDirectories))
   });
+  try {
+    await client.notify("_kiro.dev/commands/available", {
+      sessionId,
+      ...kiroAvailableCommands(cwd, additionalDirectories)
+    });
+  } catch {}
 }

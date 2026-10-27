@@ -31,7 +31,12 @@ export async function handleForkSessionV1(
   params: V1ForkSessionRequest,
   client: V1AgentContext | undefined,
   deps: ForkSessionDeps & {
-    notifyAvailableCommandsV1(client: V1AgentContext, sessionId: string): Promise<void>;
+    notifyAvailableCommandsV1(
+      client: V1AgentContext,
+      sessionId: string,
+      cwd?: string,
+      additionalDirectories?: string[]
+    ): Promise<void>;
   }
 ): Promise<V1ForkSessionResponse> {
   await deps.requireAuthenticated(params.cwd);
@@ -42,7 +47,14 @@ export async function handleForkSessionV1(
   );
   if (client) {
     childSession.v1Client = client;
-    deferAfterResponse(() => deps.notifyAvailableCommandsV1(client, childSessionId));
+    deferAfterResponse(() =>
+      deps.notifyAvailableCommandsV1(
+        client,
+        childSessionId,
+        childSession.cwd,
+        childSession.additionalDirectories
+      )
+    );
   }
   return {
     sessionId: childSessionId,
@@ -55,7 +67,12 @@ export async function handleForkSessionV2(
   params: V2ForkSessionRequest,
   client: V2AgentContext | undefined,
   deps: ForkSessionDeps & {
-    notifyAvailableCommandsV2(client: V2AgentContext, sessionId: string): Promise<void>;
+    notifyAvailableCommandsV2(
+      client: V2AgentContext,
+      sessionId: string,
+      cwd?: string,
+      additionalDirectories?: string[]
+    ): Promise<void>;
   }
 ): Promise<V2ForkSessionResponse> {
   await deps.requireAuthenticated(params.cwd);
@@ -66,7 +83,14 @@ export async function handleForkSessionV2(
   );
   if (client) {
     childSession.v2Client = client;
-    deferAfterResponse(() => deps.notifyAvailableCommandsV2(client, childSessionId));
+    deferAfterResponse(() =>
+      deps.notifyAvailableCommandsV2(
+        client,
+        childSessionId,
+        childSession.cwd,
+        childSession.additionalDirectories
+      )
+    );
   }
   return {
     sessionId: childSessionId,

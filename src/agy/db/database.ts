@@ -247,6 +247,21 @@ export class ConversationDb {
     }
   }
 
+  maxStepIdx(): number {
+    const row = this.db.prepare("SELECT MAX(idx) AS maxIdx FROM steps").get() as { maxIdx?: number | null } | undefined;
+    return row?.maxIdx ?? -1;
+  }
+
+  maxGenMetadataIdx(): number {
+    if (!this.genMetadataStmt) return -1;
+    try {
+      const row = this.db.prepare("SELECT MAX(idx) AS maxIdx FROM gen_metadata").get() as { maxIdx?: number | null } | undefined;
+      return row?.maxIdx ?? -1;
+    } catch {
+      return -1;
+    }
+  }
+
   /** Read decoded step rows with idx > afterStepIdx, in order.
    *
    * A row whose blob fails to decode (e.g. a torn read of a row agy is still
@@ -280,11 +295,31 @@ export class ConversationDb {
     for (const r of rows) {
       try {
         const decoded = decodeGenMetadata(r.idx, toUint8(r.data));
-        if (decoded) out.push(decoded);
-      } catch (error) {
-        console.error(
-          `[agy-acp] WARN: failed to decode gen_metadata ${r.idx}: ${(error as Error).message}`
-        );
+        if (decoded) {
+          out.push(decoded);
+        } else {
+          out.push({
+            idx: r.idx,
+            promptTokens: 0,
+            candidatesTokens: 0,
+            cachedTokens: 0,
+            thoughtTokens: 0,
+            contentTokens: 0,
+            totalInputTokens: 0,
+            totalTokens: 0
+          });
+        }
+      } catch {
+        out.push({
+          idx: r.idx,
+          promptTokens: 0,
+          candidatesTokens: 0,
+          cachedTokens: 0,
+          thoughtTokens: 0,
+          contentTokens: 0,
+          totalInputTokens: 0,
+          totalTokens: 0
+        });
       }
     }
     return out;

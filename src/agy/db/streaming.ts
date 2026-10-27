@@ -123,7 +123,7 @@ function isTokenLimitExhaustion(pe: {
 }
 
 export class StreamPoller {
-  private readonly translator: Translator;
+  private translator: Translator;
   private db: ConversationDb | null = null;
   private boundId: string | null;
   private _pending: PendingInteraction[] = [];
@@ -300,15 +300,26 @@ export class StreamPoller {
     // has been produced beyond that wake, do not treat the prior assistant response as conclusive.
     if (this.hasNewerWake()) return false;
     const latestMeaningful = findLastMeaningfulStep(this._lastObservedRows ?? []);
-    // Model provider errors end the turn conclusively.
+    if (this._lastUserStepIdx >= 0 && (latestMeaningful?.idx ?? -1) <= this._lastUserStepIdx) {
+      return false;
+    }
+    // Model provider errors end the turn conclusively unless it is a transient retry.
     if (latestMeaningful?.stepPayload?.modelProviderError && isTerminalStepStatus(this._latestStepStatus)) {
+      const pe = latestMeaningful.stepPayload.modelProviderError;
+      const text = (pe.summary + " " + pe.userMessage + " " + pe.diagnostic).toLowerCase();
+      const isRetry = text.includes("attempt ") || text.includes("retrying") || text.includes("unavailable");
+      if (!isRetry) {
+        return true;
+      }
+    }
+    // Completed agent text (stepType 15) without tool calls is the normal conclusive turn ending.
+    if (this._latestStepType === 15 && isTerminalStepStatus(this._latestStepStatus)) {
+      if (latestMeaningful?.stepPayload?.agentText?.hasToolCalls) {
+        return false;
+      }
       return true;
     }
-    // Completed agent text (stepType 15) is the normal conclusive turn ending.
-    // Tool steps (status 3/6/7) are turn-complete candidates but must not bypass
-    // the idle marker / quiescence wait, allowing agy to emit trailing error
-    // commentary or recovery explanations after failed (7) or cancelled (6) tools.
-    return this._latestStepType === 15 && isTerminalStepStatus(this._latestStepStatus);
+    return false;
   }
 
   /**
@@ -328,7 +339,11 @@ export class StreamPoller {
 
   private hasNewerWake(): boolean {
     const latestMeaningful = findLastMeaningfulStep(this._lastObservedRows ?? []);
-    const latestWakeIdx = Math.max(this._latestSystemMessageStepIdx, this._latestTaskCompletionStepIdx);
+    const latestWakeIdx = Math.max(
+      this._latestSystemMessageStepIdx,
+      this._latestTaskCompletionStepIdx,
+      this._lastUserStepIdx
+    );
     return latestWakeIdx >= (latestMeaningful?.idx ?? -1) && latestWakeIdx >= 0;
   }
 
@@ -350,7 +365,9 @@ export class StreamPoller {
         this._lastUserStepIdx = Math.max(this._lastUserStepIdx, row.idx);
       }
       if (row.task?.taskId && !this._launchedTaskIdxs.has(row.task.taskId)) {
-        this._launchedTaskIdxs.set(row.task.taskId, row.idx);
+        if (!isDaemonTask(row)) {
+          this._launchedTaskIdxs.set(row.task.taskId, row.idx);
+        }
       }
       const notification = row.stepPayload.taskNotification;
       const text =
@@ -363,7 +380,7 @@ export class StreamPoller {
       const taskLaunchIdx = row.task?.taskId ? this._launchedTaskIdxs.get(row.task.taskId) : undefined;
       const isTaskTerminalRow =
         taskLaunchIdx !== undefined &&
-        (row.idx > taskLaunchIdx || row.stepType !== 21) &&
+        (row.idx > taskLaunchIdx || !isCommandLaunchStep(row)) &&
         isTerminalStepStatus(row.status);
       if (
         (isSystemMessage(text) || isTaskTerminalRow) &&
@@ -379,7 +396,7 @@ export class StreamPoller {
         // before a later launch would otherwise close that newer task on the
         // next revision. Only tasks launched BEFORE this row can complete here.
         const launchedBefore = [...this._launchedTaskIdxs]
-          .filter(([, launchIdx]) => launchIdx < row.idx || (launchIdx === row.idx && row.stepType !== 21))
+          .filter(([, launchIdx]) => launchIdx < row.idx || (launchIdx === row.idx && !isCommandLaunchStep(row)))
           .map(([taskId]) => taskId);
         let matchedTask = false;
         if (row.task?.taskId && isTaskTerminalRow) {
@@ -530,6 +547,13 @@ function isIgnoredTurnStep(row: StepRow): boolean {
   if (row.stepType === 14) return true;
   if (row.stepType === 23) return true;
   if (LIFECYCLE_STEP_TYPES.has(row.stepType)) return true;
+  if (row.stepPayload.modelProviderError) {
+    const pe = row.stepPayload.modelProviderError;
+    const text = (pe.summary + " " + pe.userMessage + " " + pe.diagnostic).toLowerCase();
+    if (text.includes("attempt ") || text.includes("retrying") || text.includes("unavailable")) {
+      return true;
+    }
+  }
   if (row.stepType === 15) {
     const text = row.stepPayload.agentText?.text ?? "";
     if (isSystemMessage(text)) return true;
@@ -547,13 +571,15 @@ function findLastMeaningfulStep(rows: StepRow[]): StepRow | undefined {
 }
 
 /**
- * True when stepType 15 carries no visible agent text and no thought text.
+ * True when stepType 15 carries no visible agent text and no thought text,
+ * or when it carries tool calls (intermediate tool request step).
  * agy appends an empty stepType 15 row with status 3 while initializing
  * assistant response generation, which must NOT trigger turn completion.
  */
 function isEmptyAgentTextStep(row: StepRow): boolean {
   if (row.stepType !== 15) return false;
   if (row.stepPayload.modelProviderError) return false;
+  if (row.stepPayload.agentText?.hasToolCalls) return true;
   const text = row.stepPayload.agentText?.text ?? "";
   // System message envelopes carry real (internal) content — they are not the
   // empty placeholders agy inserts while initializing response generation.
@@ -602,4 +628,26 @@ function extractTaskOrSenderId(text: string): string | null {
     return taskTokenMatch[1];
   }
   return null;
+}
+
+/** True when the task launch payload indicates a background daemon process. */
+function isDaemonTask(row: StepRow): boolean {
+  try {
+    const raw = row.stepPayload.toolRun?.call?.rawInputJson;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.IsDaemon === true || parsed?.isDaemon === true) {
+        return true;
+      }
+    }
+  } catch {}
+  return false;
+}
+
+/** True when the row represents the launch of an external command or process. */
+function isCommandLaunchStep(row: StepRow): boolean {
+  if (row.stepType === 21) return true;
+  if (row.stepPayload.commandResult) return true;
+  const toolName = row.stepPayload.toolRun?.call?.namePrimary;
+  return toolName === "run_command" || toolName === "bash" || toolName === "execute_command";
 }

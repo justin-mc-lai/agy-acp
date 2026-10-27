@@ -355,14 +355,30 @@ export class AcpAgent {
   newSessionV1(params: V1NewSessionRequest, client?: V1AgentContext): Promise<V1NewSessionResponse> {
     return handleNewSessionV1(params, client, {
       ...this.newSessionDeps(),
-      notifyAvailableCommandsV1
+      notifyAvailableCommandsV1: (client, sessionId, cwd, dirs) => {
+        const s = this.#sessions.get(sessionId);
+        return notifyAvailableCommandsV1(
+          client,
+          sessionId,
+          cwd ?? s?.cwd ?? params.cwd,
+          dirs ?? s?.additionalDirectories ?? params.additionalDirectories
+        );
+      }
     });
   }
 
   newSessionV2(params: V2NewSessionRequest, client?: V2AgentContext): Promise<V2NewSessionResponse> {
     return handleNewSessionV2(params, client, {
       ...this.newSessionDeps(),
-      notifyAvailableCommandsV2
+      notifyAvailableCommandsV2: (client, sessionId, cwd, dirs) => {
+        const s = this.#sessions.get(sessionId);
+        return notifyAvailableCommandsV2(
+          client,
+          sessionId,
+          cwd ?? s?.cwd ?? params.cwd,
+          dirs ?? s?.additionalDirectories ?? params.additionalDirectories
+        );
+      }
     });
   }
 
@@ -376,14 +392,30 @@ export class AcpAgent {
   forkSessionV1(params: V1ForkSessionRequest, client?: V1AgentContext): Promise<V1ForkSessionResponse> {
     return handleForkSessionV1(params, client, {
       ...this.forkSessionDeps(),
-      notifyAvailableCommandsV1
+      notifyAvailableCommandsV1: (client, sessionId, cwd, dirs) => {
+        const s = this.#sessions.get(sessionId);
+        return notifyAvailableCommandsV1(
+          client,
+          sessionId,
+          cwd ?? s?.cwd ?? params.cwd,
+          dirs ?? s?.additionalDirectories ?? params.additionalDirectories
+        );
+      }
     });
   }
 
   forkSessionV2(params: V2ForkSessionRequest, client?: V2AgentContext): Promise<V2ForkSessionResponse> {
     return handleForkSessionV2(params, client, {
       ...this.forkSessionDeps(),
-      notifyAvailableCommandsV2
+      notifyAvailableCommandsV2: (client, sessionId, cwd, dirs) => {
+        const s = this.#sessions.get(sessionId);
+        return notifyAvailableCommandsV2(
+          client,
+          sessionId,
+          cwd ?? s?.cwd ?? params.cwd,
+          dirs ?? s?.additionalDirectories ?? params.additionalDirectories
+        );
+      }
     });
   }
 
@@ -411,14 +443,30 @@ export class AcpAgent {
     return handleLoadSession(params, client, {
       ...this.reloadSessionDeps(),
       clientToolCallNameV1: () => this.#clientToolCallName,
-      notifyAvailableCommandsV1
+      notifyAvailableCommandsV1: (client, sessionId, cwd, dirs) => {
+        const s = this.#sessions.get(sessionId);
+        return notifyAvailableCommandsV1(
+          client,
+          sessionId,
+          cwd ?? s?.cwd ?? params.cwd,
+          dirs ?? s?.additionalDirectories ?? params.additionalDirectories
+        );
+      }
     });
   }
 
   resumeSessionV1(params: V1ResumeSessionRequest, client?: V1AgentContext): Promise<V1ResumeSessionResponse> {
     return handleResumeSessionV1(params, client, {
       ...this.reloadSessionDeps(),
-      notifyAvailableCommandsV1
+      notifyAvailableCommandsV1: (client, sessionId, cwd, dirs) => {
+        const s = this.#sessions.get(sessionId);
+        return notifyAvailableCommandsV1(
+          client,
+          sessionId,
+          cwd ?? s?.cwd ?? params.cwd,
+          dirs ?? s?.additionalDirectories ?? params.additionalDirectories
+        );
+      }
     });
   }
 
@@ -426,7 +474,15 @@ export class AcpAgent {
     return handleResumeSessionV2(params, client, {
       ...this.reloadSessionDeps(),
       clientToolCallNameV2: () => this.#clientToolCallName,
-      notifyAvailableCommandsV2
+      notifyAvailableCommandsV2: (client, sessionId, cwd, dirs) => {
+        const s = this.#sessions.get(sessionId);
+        return notifyAvailableCommandsV2(
+          client,
+          sessionId,
+          cwd ?? s?.cwd ?? params.cwd,
+          dirs ?? s?.additionalDirectories ?? params.additionalDirectories
+        );
+      }
     });
   }
 

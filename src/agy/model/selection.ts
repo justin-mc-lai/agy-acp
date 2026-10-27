@@ -35,7 +35,7 @@ export function initialModelSelection(
     baseModel: base,
     reasoningEffort: reasoningEffort && effects.includes(reasoningEffort)
       ? reasoningEffort
-      : effects[0]
+      : (effects.includes("low") ? "low" : effects[0])
   };
 }
 
@@ -87,7 +87,7 @@ function normalizeStoredReasoningEffort(storedEffect: string, effects: string[])
   if (storedEffect === "__none__" || storedEffect === NO_REASONING_VALUE) {
     return NO_REASONING_VALUE;
   }
-  return effects[0];
+  return effects.includes("low") ? "low" : effects[0];
 }
 
 export function applyModelSelection(
@@ -106,7 +106,7 @@ export function applyModelSelection(
   }
 
   if (selectedReasoningEffort === NO_REASONING_VALUE || !effects.includes(selectedReasoningEffort)) {
-    agy.setEffort(effects[0]);
+    agy.setEffort(effects.includes("low") ? "low" : effects[0]);
     return;
   }
 

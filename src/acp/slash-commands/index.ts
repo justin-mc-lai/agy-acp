@@ -8,6 +8,9 @@
 // session config surfaces already mapped to `agy --mode` / `--model` / `--effort`.
 // Full TUI palette (/settings, /mcp, /help overlays, …) is intentionally omitted.
 
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { AvailableCommand, ContentBlock, SessionUpdate } from "@agentclientprotocol/sdk";
 
 export const MODE_SLASH = "mode";
@@ -43,11 +46,184 @@ export const AVAILABLE_COMMANDS: readonly AvailableCommand[] = [
   }
 ];
 
-/** ACP session update listing the curated command set. */
-export function availableCommandsUpdate(): SessionUpdate {
+function parseSkillMd(filePath: string, fallbackName: string): (AvailableCommand & { kind?: string }) | null {
+  try {
+    const content = fs.readFileSync(filePath, "utf8");
+    const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content);
+    if (!match) return null;
+    const yaml = match[1];
+    let name = fallbackName;
+    const nameMatch = /^name:\s*(.+)$/m.exec(yaml);
+    if (nameMatch) {
+      name = nameMatch[1].trim().replace(/^["']|["']$/g, "");
+    }
+    let description = "";
+    const descMatch = /^description:\s*(?:[>|]\s*)?([\s\S]*?)(?=\n[a-zA-Z0-9_-]+:|$)/m.exec(yaml);
+    if (descMatch) {
+      description = descMatch[1].replace(/\r?\n\s*/g, " ").trim().replace(/^["']|["']$/g, "");
+    }
+    let hint = "arguments";
+    const hintMatch = /^(?:argument-hint|hint):\s*(.+)$/m.exec(yaml);
+    if (hintMatch) {
+      hint = hintMatch[1].trim().replace(/^["']|["']$/g, "");
+    }
+    return {
+      name,
+      description: description || `Skill: ${name}`,
+      input: { hint }
+    };
+  } catch {
+    return null;
+  }
+}
+
+function scanSkillDir(skillsDir: string, map: Map<string, AvailableCommand>): void {
+  if (!fs.existsSync(skillsDir)) return;
+  try {
+    const entries = fs.readdirSync(skillsDir, { withFileTypes: true });
+    for (const ent of entries) {
+      const fullPath = path.join(skillsDir, ent.name);
+      let isDir = ent.isDirectory();
+      if (!isDir && ent.isSymbolicLink()) {
+        try {
+          isDir = fs.statSync(fullPath).isDirectory();
+        } catch {}
+      }
+      if (isDir) {
+        const skillMd = path.join(fullPath, "SKILL.md");
+        if (fs.existsSync(skillMd)) {
+          const parsed = parseSkillMd(skillMd, ent.name);
+          if (parsed && !map.has(parsed.name)) {
+            map.set(parsed.name, parsed);
+          }
+        }
+      } else if (ent.isFile() && ent.name === "SKILL.md") {
+        const dirName = path.basename(skillsDir);
+        const parsed = parseSkillMd(fullPath, dirName);
+        if (parsed && !map.has(parsed.name)) {
+          map.set(parsed.name, parsed);
+        }
+      }
+    }
+  } catch {}
+}
+
+const skillCache = new Map<string, { timestamp: number; skills: AvailableCommand[] }>();
+const CACHE_TTL_MS = 20000;
+
+export function discoverSkills(
+  cwd: string = process.cwd(),
+  additionalDirectories: string[] = []
+): AvailableCommand[] {
+  const normCwd = path.resolve(cwd || process.cwd());
+  const normAdditional = (additionalDirectories || []).map((d) => path.resolve(d));
+  const cacheKey = `${normCwd}:${normAdditional.join(";")}`;
+  const cached = skillCache.get(cacheKey);
+  const now = Date.now();
+  if (cached && now - cached.timestamp < CACHE_TTL_MS) {
+    return cached.skills;
+  }
+
+  const map = new Map<string, AvailableCommand>();
+  const home = os.homedir();
+
+  const workspaceDirs = [
+    path.join(normCwd, ".agents", "skills"),
+    path.join(normCwd, ".gemini", "skills"),
+    path.join(normCwd, "skills")
+  ];
+  for (const extra of normAdditional) {
+    workspaceDirs.push(
+      path.join(extra, ".agents", "skills"),
+      path.join(extra, ".gemini", "skills"),
+      path.join(extra, "skills")
+    );
+  }
+  for (const d of workspaceDirs) {
+    scanSkillDir(d, map);
+  }
+
+  const globalDirs = [
+    path.join(home, ".gemini", "config", "skills"),
+    path.join(home, ".gemini", "antigravity", "builtin", "skills"),
+    path.join(home, ".agents", "skills"),
+    path.join(home, ".gemini", "skills")
+  ];
+  for (const d of globalDirs) {
+    scanSkillDir(d, map);
+  }
+
+  const pluginsDir = path.join(home, ".gemini", "config", "plugins");
+  if (fs.existsSync(pluginsDir)) {
+    try {
+      const plugins = fs.readdirSync(pluginsDir);
+      for (const p of plugins) {
+        const sDir = path.join(pluginsDir, p, "skills");
+        if (fs.existsSync(sDir)) {
+          scanSkillDir(sDir, map);
+        }
+      }
+    } catch {}
+  }
+
+  const skills = Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  skillCache.set(cacheKey, { timestamp: now, skills });
+  return skills;
+}
+
+// Pre-warm skill cache on process startup
+setTimeout(() => {
+  try {
+    discoverSkills();
+  } catch {}
+}, 0);
+
+/** ACP session update listing the curated command set and discovered skills. */
+export function availableCommandsUpdate(cwd?: string, additionalDirectories?: string[]): SessionUpdate {
+  const skills = cwd ? discoverSkills(cwd, additionalDirectories) : [];
+  const reserved = new Set(AVAILABLE_COMMANDS.map((c) => c.name));
+  const skillCommands: AvailableCommand[] = skills
+    .filter((s) => !reserved.has(s.name))
+    .map((s) => ({
+      name: s.name,
+      description: s.description,
+      input: s.input,
+      kind: "skill",
+      _meta: { kind: "skill" }
+    }));
   return {
     sessionUpdate: "available_commands_update",
-    availableCommands: [...AVAILABLE_COMMANDS]
+    availableCommands: [
+      ...AVAILABLE_COMMANDS.map((c) => ({ ...c, kind: "command" })),
+      ...skillCommands
+    ]
+  };
+}
+
+/** Formats commands and skills for Paseo/Kiro _kiro.dev/commands/available extension notification. */
+export function kiroAvailableCommands(
+  cwd?: string,
+  additionalDirectories?: string[]
+): {
+  commands: Array<{ name: string; description: string; meta: { hint: string } }>;
+  prompts: Array<{ name: string; description: string; serverName: string; meta: { hint: string } }>;
+} {
+  const skills = discoverSkills(cwd, additionalDirectories);
+  const reserved = new Set(AVAILABLE_COMMANDS.map((c) => c.name));
+  return {
+    commands: AVAILABLE_COMMANDS.map((c) => ({
+      name: "/" + c.name,
+      description: c.description,
+      meta: { hint: c.input?.hint || "" }
+    })),
+    prompts: skills
+      .filter((s) => !reserved.has(s.name))
+      .map((s) => ({
+        name: s.name,
+        description: s.description,
+        serverName: "skill:" + s.name,
+        meta: { hint: s.input?.hint || "" }
+      }))
   };
 }
 
@@ -106,6 +282,7 @@ export type SlashConfigAction = {
 export type SlashInterpretResult =
   | { kind: "pass" }
   | { kind: "error"; message: string }
+  | { kind: "skills" }
   | SlashConfigAction;
 
 /**
@@ -121,6 +298,9 @@ export function interpretSlashCommand(parsed: ParsedSlashCommand): SlashInterpre
         return { kind: "error", message: "/plan does not take arguments; use /mode plan or omit the input." };
       }
       return { kind: "set_config", configId: "mode", value: "plan" };
+
+    case SKILLS_SLASH:
+      return { kind: "skills" };
 
     case MODE_SLASH: {
       if (!parsed.input) {
