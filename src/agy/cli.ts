@@ -1315,10 +1315,17 @@ export function configFromEnv(input: AgyCliConfigInput): AgyCliConfig {
     skipPermissions = true;
   }
   // Interactive permission forwarding is the normal execution path. The
-  // explicit dangerous bypass selects print mode because there is no
-  // permission request to forward when agy auto-approves everything.
+  // explicit dangerous bypass selects print mode unless --interactive is
+  // explicitly provided, because print mode cannot bridge live permissions.
+  const interactiveExplicit = argv.includes("--interactive") || argv.includes("--interactive-permissions");
   const interactiveDisabled = argv.includes("--no-interactive-permissions");
-  const interactivePermissions = !skipPermissions && !interactiveDisabled;
+  const interactivePermissions = !interactiveDisabled && (interactiveExplicit || !skipPermissions);
+
+  let printTimeout = optional(env.AGY_PRINT_TIMEOUT) ?? "5m0s";
+  const printTimeoutIdx = argv.indexOf("--print-timeout");
+  if (printTimeoutIdx >= 0 && argv[printTimeoutIdx + 1]) {
+    printTimeout = argv[printTimeoutIdx + 1]!;
+  }
 
   let mode: SessionModeId = "default";
   const modeFlagIdx = argv.indexOf("--mode");
@@ -1337,7 +1344,7 @@ export function configFromEnv(input: AgyCliConfigInput): AgyCliConfig {
     effort: undefined,
     mode,
     project: undefined,
-    printTimeout: "5m0s",
+    printTimeout,
     sandbox,
     skipPermissions,
     interactivePermissions,

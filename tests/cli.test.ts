@@ -2328,7 +2328,11 @@ describe("configFromEnv", () => {
   it("enables interactive permissions by default and lets the dangerous bypass select print mode", () => {
     expect(configFromEnv({ cwd: "/repo" }).interactivePermissions).toBe(true);
     expect(configFromEnv({ cwd: "/repo", argv: ["--dangerously-skip-permissions"] }).interactivePermissions).toBe(false);
+    expect(configFromEnv({ cwd: "/repo", argv: ["--dangerously-skip-permissions", "--interactive"] }).interactivePermissions).toBe(true);
+    expect(configFromEnv({ cwd: "/repo", argv: ["--dangerously-skip-permissions", "--interactive-permissions"] }).interactivePermissions).toBe(true);
     expect(configFromEnv({ cwd: "/repo", argv: ["--no-interactive-permissions"] }).interactivePermissions).toBe(false);
+    expect(configFromEnv({ cwd: "/repo", argv: ["--print-timeout", "30m"] }).printTimeout).toBe("30m");
+    expect(configFromEnv({ cwd: "/repo", env: { AGY_PRINT_TIMEOUT: "1h" } }).printTimeout).toBe("1h");
   });
 });
 
