@@ -1,18 +1,18 @@
 {
   "name": "agy-acp",
-  "version": "0.5.2",
-  "description": "Agent Client Protocol adapter that wraps the Google Antigravity CLI (ACP v1 + experimental draft ACP v2)",
+  "version": "0.5.3",
+  "description": "Agent Client Protocol (ACP) adapter for Google Antigravity CLI (ACP v1 + draft ACP v2) supporting Paseo, Zed, and other ACP clients",
   "type": "module",
   "author": {
-    "name": "shidngew"
+    "name": "Justin Lai"
   },
-  "homepage": "https://github.com/shindgew/agy-acp#readme",
+  "homepage": "https://github.com/justin-mc-lai/agy-acp#readme",
   "bugs": {
-    "url": "https://github.com/shindgew/agy-acp/issues"
+    "url": "https://github.com/justin-mc-lai/agy-acp/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/shindgew/agy-acp.git"
+    "url": "git+https://github.com/justin-mc-lai/agy-acp.git"
   },
   "keywords": [
     "acp",

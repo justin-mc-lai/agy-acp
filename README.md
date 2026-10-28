@@ -10,16 +10,37 @@
   agy-acp
 </h1>
 
-[ACP](https://agentclientprotocol.com) adapter for [Google Antigravity CLI](https://antigravity.google/product/antigravity-cli)
+[ACP](https://agentclientprotocol.com) adapter for [Google Antigravity CLI](https://antigravity.google/product/antigravity-cli), bringing full Agent Client Protocol support to **Paseo**, **Zed**, and other ACP-compatible clients.
 
-</div>
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-161%20passed-brightgreen.svg)]()
 
+---
 
-## Usage
+## Highlights
 
-`agy-acp` automatically uses an installed `agy` binary if it exists and no binary is explicitly specified. If no existing binary is detected or specified, it installs the latest version during `initialize` from the official [google-antigravity/antigravity-cli](https://github.com/google-antigravity/antigravity-cli/releases/latest) GitHub repository into `~/.local/bin/agy` (checksum-verified when a digest is published).
+- **Native SQLite Protobuf Streaming**: Decodes `agy` internal conversation state directly with sub-second latency, avoiding brittle terminal screen-scraping.
+- **Interactive Permission Bridge**: Seamlessly translates sandbox permissions, bash execution approval, and `ask_question` menus to native ACP client dialogs.
+- **Resilient Turn Lifecycle**: Accurately tracks multi-step tool execution loops and PTY idle prompts to prevent premature turn disconnection during long workflows.
+- **ACP v1 & Draft v2**: Full support for both standard ACP v1 streaming and modern ACP v2 draft specs (session resume, message ID tracking, and live usage metrics).
 
-Or install `agy` yourself using the official installer script or Homebrew:
+---
+
+## Installation
+
+```sh
+# Install globally
+npm install -g agy-acp
+
+# Or run directly on demand with npx
+npx agy-acp
+```
+
+### Prerequisites
+
+`agy-acp` uses your local `agy` CLI binary. If not found, it can auto-install the latest official release into `~/.local/bin/agy`.
+
+You can also install `agy` manually:
 
 ```sh
 # Official script
@@ -29,16 +50,42 @@ curl -fsSL https://antigravity.google/cli/install.sh | bash
 brew install antigravity-cli
 ```
 
-### Zed Configuration
+---
 
-Add `agy-acp` as a custom agent in Zed:
+## Client Configuration
+
+### Paseo
+
+Add Google Antigravity as an ACP Agent in Paseo:
+
+```json
+{
+  "name": "Google Antigravity",
+  "command": "agy-acp",
+  "args": []
+}
+```
+
+Or run via `npx`:
+
+```json
+{
+  "name": "Google Antigravity",
+  "command": "npx",
+  "args": ["-y", "agy-acp"]
+}
+```
+
+### Zed
+
+Add `agy-acp` as a custom agent in Zed's `settings.json`:
 
 ```json
 {
   "agent_servers": {
     "Google Antigravity": {
-      "command": "npx",
-      "args": ["agy-acp"]
+      "command": "agy-acp",
+      "args": []
     }
   }
 }
