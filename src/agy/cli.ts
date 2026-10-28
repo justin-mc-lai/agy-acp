@@ -37,7 +37,7 @@ import {
   type PermissionChoice
 } from "../acp/tool-calls/permissions.js";
 import type { ClientElicitationCapability } from "../acp/tool-calls/elicitation.js";
-export const DEFAULT_AGY_MODEL_LIST_TIMEOUT_MS = 15_000;
+export const DEFAULT_AGY_MODEL_LIST_TIMEOUT_MS = 60_000;
 export const DEFAULT_CONVERSATIONS_DIR = path.join(os.homedir(), ".gemini", "antigravity-cli", "conversations");
 const POLL_INTERVAL_MS = 200;
 /** Trailing polls after the process exits, to catch rows flushed right around exit. */
@@ -1336,6 +1336,21 @@ export function configFromEnv(input: AgyCliConfigInput): AgyCliConfig {
     }
   }
 
+  let modelListTimeoutMs = DEFAULT_AGY_MODEL_LIST_TIMEOUT_MS;
+  if (env.AGY_MODEL_LIST_TIMEOUT_MS) {
+    const parsed = parseInt(env.AGY_MODEL_LIST_TIMEOUT_MS, 10);
+    if (!isNaN(parsed) && parsed > 0) {
+      modelListTimeoutMs = parsed;
+    }
+  }
+  const modelListTimeoutIdx = argv.indexOf("--model-list-timeout");
+  if (modelListTimeoutIdx >= 0 && argv[modelListTimeoutIdx + 1]) {
+    const parsed = parseInt(argv[modelListTimeoutIdx + 1]!, 10);
+    if (!isNaN(parsed) && parsed > 0) {
+      modelListTimeoutMs = parsed;
+    }
+  }
+
   return {
     cwd: input.cwd,
     additionalDirectories: input.additionalDirectories ?? [],
@@ -1354,7 +1369,7 @@ export function configFromEnv(input: AgyCliConfigInput): AgyCliConfig {
     installBinDir: defaultInstallBinDir(env),
     modelList: [],
     discoverModels: true,
-    modelListTimeoutMs: DEFAULT_AGY_MODEL_LIST_TIMEOUT_MS,
+    modelListTimeoutMs,
     conversationsDir: input.conversationsDir ?? DEFAULT_CONVERSATIONS_DIR,
     env
   };

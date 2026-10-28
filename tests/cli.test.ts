@@ -2333,6 +2333,9 @@ describe("configFromEnv", () => {
     expect(configFromEnv({ cwd: "/repo", argv: ["--no-interactive-permissions"] }).interactivePermissions).toBe(false);
     expect(configFromEnv({ cwd: "/repo", argv: ["--print-timeout", "30m"] }).printTimeout).toBe("30m");
     expect(configFromEnv({ cwd: "/repo", env: { AGY_PRINT_TIMEOUT: "1h" } }).printTimeout).toBe("1h");
+    expect(configFromEnv({ cwd: "/repo" }).modelListTimeoutMs).toBe(60_000);
+    expect(configFromEnv({ cwd: "/repo", argv: ["--model-list-timeout", "45000"] }).modelListTimeoutMs).toBe(45000);
+    expect(configFromEnv({ cwd: "/repo", env: { AGY_MODEL_LIST_TIMEOUT_MS: "90000" } }).modelListTimeoutMs).toBe(90000);
   });
 });
 

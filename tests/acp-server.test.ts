@@ -121,6 +121,59 @@ describe("authentication", () => {
     }
   });
 
+  it("allows session/new when auth probe encounters timeout but cached models exist", async () => {
+    vi.spyOn(installer, "ensureAgyInstalled").mockResolvedValue(null);
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "agy-test-auth-cache-"));
+    fs.writeFileSync(
+      path.join(stateDir, "models.json"),
+      JSON.stringify({
+        entries: {
+          agy: {
+            models: ["gemini-3.5-flash-high\tGemini 3.5 Flash (High)"],
+            updatedAt: Date.now()
+          }
+        }
+      })
+    );
+
+    const spawnProcess = (_command: string, args: string[]) => {
+      if (args[0] === "models") {
+        return new FakeProcess([], {
+          exitCode: 1,
+          stderr: "agy models timed out\n"
+        });
+      }
+      return new FakeProcess(["ok"]);
+    };
+
+    const connection = acpClient({ name: "test-client" }).connect(
+      createAcpApp(printModeOptions({
+        spawnProcess: spawnProcess as unknown as SpawnFactory,
+        stateDir,
+        modelCacheEnabled: true
+      }))
+    );
+    try {
+      await connection.agent.request(methods.agent.initialize, {
+        protocolVersion: PROTOCOL_VERSION,
+        clientCapabilities: {}
+      });
+      await expect(
+        connection.agent.request(methods.agent.session.new, {
+          cwd: "/repo",
+          additionalDirectories: [],
+          mcpServers: []
+        })
+      ).resolves.toMatchObject({
+        sessionId: expect.any(String)
+      });
+    } finally {
+      connection.close();
+      fs.rmSync(stateDir, { recursive: true, force: true });
+      vi.restoreAllMocks();
+    }
+  });
+
   it("authenticate succeeds when agy models lists models", async () => {
     vi.spyOn(installer, "ensureAgyInstalled").mockResolvedValue(null);
     const spawnProcess = (_command: string, args: string[]) => {

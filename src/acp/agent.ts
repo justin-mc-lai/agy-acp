@@ -72,7 +72,7 @@ import type { ClientFileSystem } from "../agy/edit/bridge.js";
 import { readTextFile } from "./fs/read-text-file.js";
 import { writeTextFile } from "./fs/write-text-file.js";
 import { ensureAgyInstalled } from "../agy/installer.js";
-import { AUTH_REQUIRED_MESSAGE, isAgyAuthenticated, v1AuthMethods } from "../agy/auth.js";
+import { AUTH_REQUIRED_MESSAGE, isAgyAuthenticated, looksUnauthenticated, v1AuthMethods } from "../agy/auth.js";
 import {
   AgyCliBackend,
   configFromEnv,
@@ -301,8 +301,18 @@ export class AcpAgent {
    */
   private async requireAuthenticated(cwd?: string): Promise<void> {
     await this.ensureAgyReady();
-    const status = await isAgyAuthenticated(this.#backend, this.authProbeConfig(cwd));
+    const config = this.authProbeConfig(cwd);
+    const key = config.agyPath;
+    const cached = this.#modelOptionsCache.get(key);
+    if (cached && cached.models.length > 0 && Date.now() - cached.updatedAt < MODEL_CACHE_TTL_MS) {
+      return;
+    }
+    const status = await isAgyAuthenticated(this.#backend, config);
     if (status.ok) return;
+    if (cached && cached.models.length > 0 && !looksUnauthenticated(status.reason)) {
+      console.warn(`[agy-acp] auth probe warning: ${status.reason}; falling back to cached models`);
+      return;
+    }
     console.error(`[agy-acp] auth required: ${status.reason}`);
     throw RequestError.authRequired(
       { authMethods: v1AuthMethods() },
