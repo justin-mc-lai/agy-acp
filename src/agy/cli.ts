@@ -231,6 +231,8 @@ export class AgyCliSession {
   #pty: PtyProcess | undefined;
   #ptyExit: Promise<{ exitCode: number }> | undefined;
   #ptyOutput = "";
+  #ptyIdleMarkerCount = 0;
+  #ptyIdleMatchTail = "";
   #ptyPermissionMarkerCount = 0;
   #ptyPermissionRender = "";
   #ptyPermissionMarkerTail = "";
@@ -441,6 +443,7 @@ export class AgyCliSession {
     const snapshot = this.#conversationId === null ? conversationSnapshot(this.config.conversationsDir) : null;
     const factory = this.#pty ? undefined : (this.ptyFactory ?? await defaultPtyFactory());
     if (!this.#pty && this.#cancelled) { this.#cancelTurn = undefined; return { stopReason: "cancelled" }; }
+    const freshPty = !this.#pty;
     const poller = new StreamPoller({ dir: this.config.conversationsDir, conversationId: this.#conversationId,
       baseStepIdx: this.#lastStepIdx, baseGenMetadataIdx: this.#lastGenMetadataIdx, skipNarration: false, cwd: this.config.cwd, snapshot });
     this.#activeStreamPoller = poller;
@@ -449,12 +452,23 @@ export class AgyCliSession {
       this.#pty = factory!.spawn(program, args, { ...this.spawnOptions(), cols: 120, rows: 40 });
       this.#ptyConfig = signature;
       this.#ptyOutput = "";
+      this.#ptyIdleMarkerCount = 0;
+      this.#ptyIdleMatchTail = "";
       this.#ptyPermissionMarkerCount = 0;
       this.#ptyPermissionRender = "";
       this.#ptyPermissionMarkerTail = "";
       const activePty = this.#pty;
       activePty.onData((data) => {
         if (this.#pty !== activePty) return;
+        const idleMarker = "for shortcuts";
+        const searchable = this.#ptyIdleMatchTail + data;
+        let offset = 0;
+        while ((offset = searchable.indexOf(idleMarker, offset)) >= 0) {
+          this.#ptyIdleMarkerCount++;
+          offset += idleMarker.length;
+        }
+        this.#ptyIdleMatchTail = searchable.slice(-(idleMarker.length - 1));
+
         this.#ptyPermissionRender = (this.#ptyPermissionRender + data).slice(-16_384);
         if (this.#ptyPermissionRenderTimer) clearTimeout(this.#ptyPermissionRenderTimer);
         this.#ptyPermissionRenderTimer = setTimeout(
@@ -486,6 +500,9 @@ export class AgyCliSession {
     let candidateRevision = -1;
     let seenRevision = -1;
     let lastActivityTime = Date.now();
+    let requiredIdleMarkerCount = freshPty
+      ? 2
+      : this.#ptyIdleMarkerCount + 1;
     let failed = false;
     try {
       while (true) {
@@ -621,6 +638,7 @@ export class AgyCliSession {
               if (!await this.writePermissionKeys(keys)) break;
             }
             gateMarkerCounts.set(id, this.#ptyPermissionMarkerCount);
+            requiredIdleMarkerCount = this.#ptyIdleMarkerCount + 1;
             continue;
           }
 
@@ -683,13 +701,13 @@ export class AgyCliSession {
         if (hadInteraction) {
           lastActivityTime = Date.now();
         }
+        const hasMatchedMarker = this.#ptyIdleMarkerCount >= requiredIdleMarkerCount;
         const hasQuiesced = (Date.now() - lastActivityTime) >= QUIESCENT_SETTLE_MS;
         const isIdleCandidate =
           poller.turnCompleteCandidate &&
           poller.lastStepIdx > this.#lastStepIdx &&
           candidateRevision === poller.revision &&
-          hasQuiesced &&
-          (poller.isConclusiveTurnEnd || poller.isSuccessfulToolOnlyEnd);
+          ((poller.isConclusiveTurnEnd && hasQuiesced) || (poller.isSuccessfulToolOnlyEnd && hasMatchedMarker));
         if (isIdleCandidate) {
           // Background work can finish after the TUI looks idle. Stay on this
           // user turn and keep polling — do not inject a synthetic "continue".

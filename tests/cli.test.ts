@@ -512,6 +512,7 @@ describe("permission bridge", () => {
         })
       });
       db.close();
+      setTimeout(() => pty.emitData("? for shortcuts"), 50);
     });
     // Set a very long timeout (60s). Must resolve via quiescence in < 2s rather than waiting 60s.
     const session = interactiveSession(dir, pty, "60s");
@@ -550,8 +551,8 @@ describe("permission bridge", () => {
     );
 
     // After tool fails, agy generates assistant recovery explanation before emitting idle marker
-    await new Promise((resolve) => setTimeout(resolve, 60));
-    const db = new (await import("better-sqlite3")).default(path.join(dir, "tool-fail-recovery.db"));
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const db = createConversationDb(dir, "tool-fail-recovery");
     insertStep(db, {
       idx: 2,
       stepType: 15,
@@ -599,7 +600,7 @@ describe("permission bridge", () => {
     );
 
     await new Promise((resolve) => setTimeout(resolve, 400));
-    const db = new (await import("better-sqlite3")).default(path.join(dir, "tool-fail-delayed-recovery.db"));
+    const db = createConversationDb(dir, "tool-fail-delayed-recovery");
     insertStep(db, {
       idx: 2,
       stepType: 15,
@@ -973,7 +974,7 @@ describe("permission bridge", () => {
         status: 3,
         stepPayload: encodeStepPayload({ commandResult: encodeCommandResult({ command: "git status", output: "clean" }) })
       });
-      // Model thinks for 400ms before emitting final agent text
+      // Model thinks for 800ms before emitting final agent text
       setTimeout(() => {
         insertStep(dbHandle, {
           idx: 2,
@@ -983,7 +984,7 @@ describe("permission bridge", () => {
         });
         dbHandle.close();
         setTimeout(() => pty.emitData("? for shortcuts"), 10);
-      }, 400);
+      }, 800);
     });
 
     const session = interactiveSession(dir, pty, "5s");
@@ -2111,18 +2112,16 @@ describe("permission bridge", () => {
       writeTextFile: async (p: string, content: string) => {
         writes.push({ path: p, content });
         fs.writeFileSync(p, content, "utf8");
+        const db = createConversationDb(dir, "fs-bridge-route");
+        insertStep(db, { idx: 2, stepType: 15, status: 3, stepPayload: encodeStepPayload({ agentText: "done" }) });
+        db.close();
+        pty.emitData("? for shortcuts");
       }
     };
     const result = session.prompt("edit it", async () => {}, async () => {
       permissionCalls++;
       return "allow-once";
     }, fsBridge);
-    setTimeout(async () => {
-      const db = new (await import("better-sqlite3")).default(path.join(dir, "fs-bridge-route.db"));
-      insertStep(db, { idx: 2, stepType: 15, status: 3, stepPayload: encodeStepPayload({ agentText: "done" }) });
-      db.close();
-      pty.emitData("? for shortcuts");
-    }, 50);
     expect((await result).stopReason).toBe("end_turn");
     expect(permissionCalls).toBe(0);
     expect(reads).toEqual([targetFile]);
